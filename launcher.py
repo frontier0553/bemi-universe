@@ -7,13 +7,14 @@ import urllib.request
 import tkinter as tk
 from tkinter import ttk
 
-REPO        = "frontier0553/bemi-universe"
-RAW_BASE    = f"https://raw.githubusercontent.com/{REPO}/main"
-API_BASE    = f"https://api.github.com/repos/{REPO}"
-ZIP_NAME    = "bemi-universe.zip"
-MAIN_EXE    = "bemi-universe.exe"
-VERSION_FILE = "version.txt"
-BASE_DIR    = r"C:\bemiuniverse"
+REPO             = "frontier0553/bemi-universe"
+RAW_BASE         = f"https://raw.githubusercontent.com/{REPO}/main"
+API_BASE         = f"https://api.github.com/repos/{REPO}"
+ZIP_NAME         = "bemi-universe.zip"
+MAIN_EXE         = "bemi-universe.exe"
+VERSION_FILE     = "version.txt"
+BASE_DIR         = r"C:\bemiuniverse"
+WHITELIST_ENABLED = True   # False 로 바꾸면 화이트리스트 검사 비활성화
 os.makedirs(BASE_DIR, exist_ok=True)
 
 
@@ -85,8 +86,10 @@ class UpdateWindow(tk.Tk):
         self._sub.configure(text=sub)
 
     def _run(self):
-        # 화이트리스트 체크
-        allowed, mac = _check_whitelist()
+        if WHITELIST_ENABLED:
+            allowed, mac = _check_whitelist()
+        else:
+            allowed, mac = True, ""
         if not allowed:
             self._set("접근 권한 없음", f"아래 MAC 주소를 관리자에게 전달하세요")
             self.after(0, lambda: self._sub.configure(
