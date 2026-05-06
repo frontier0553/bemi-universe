@@ -12,8 +12,10 @@ def _get_model_dir():
         return os.path.join(sys._MEIPASS, 'easyocr_models')
     return os.path.join(os.path.expanduser('~'), '.EasyOCR', 'model')
 
+_init_error = ""
+
 def _init_ocr():
-    global OCR_ENGINE, _ocr_reader
+    global OCR_ENGINE, _ocr_reader, _init_error
     try:
         import easyocr
         model_dir = _get_model_dir()
@@ -21,15 +23,15 @@ def _init_ocr():
                                      model_storage_directory=model_dir)
         OCR_ENGINE = "easyocr"
         return
-    except ImportError:
-        pass
+    except Exception as e:
+        _init_error = f"easyocr 실패: {e}"
     try:
         import pytesseract
         pytesseract.get_tesseract_version()
         OCR_ENGINE = "tesseract"
         return
-    except Exception:
-        pass
+    except Exception as e:
+        _init_error += f" / tesseract 실패: {e}"
     OCR_ENGINE = None
 
 def ocr_read(pil_img, numbers_only=True):

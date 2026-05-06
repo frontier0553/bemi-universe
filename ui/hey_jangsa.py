@@ -201,7 +201,10 @@ class AppHeyJangsa(ctk.CTk):
     def _load_ocr_engine(self):
         self.log("OCR 엔진 로딩 중...")
         _init_ocr()
-        self.log(f"OCR 준비: {_ocr_mod.OCR_ENGINE or '없음'}")
+        if _ocr_mod.OCR_ENGINE:
+            self.log(f"OCR 준비: {_ocr_mod.OCR_ENGINE}")
+        else:
+            self.log(f"OCR 준비: 없음 — {_ocr_mod._init_error}")
 
     def refresh_windows(self):
         self.windows_list = enum_visible_windows()
