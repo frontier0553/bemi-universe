@@ -15,6 +15,19 @@ import core.arduino as _ar_mod
 from core.arduino import arduino_send
 
 # ─────────────────────────────────────────
+#  DPI 배율
+# ─────────────────────────────────────────
+def get_dpi_scale() -> float:
+    """논리 픽셀 → 물리 픽셀 배율 (예: 125% 스케일 → 1.25)"""
+    try:
+        hdc = ctypes.windll.user32.GetDC(0)
+        dpi = ctypes.windll.gdi32.GetDeviceCaps(hdc, 88)  # LOGPIXELSX
+        ctypes.windll.user32.ReleaseDC(0, hdc)
+        return dpi / 96.0
+    except Exception:
+        return 1.0
+
+# ─────────────────────────────────────────
 #  관리자 권한
 # ─────────────────────────────────────────
 def _is_admin():

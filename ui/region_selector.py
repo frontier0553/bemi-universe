@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import customtkinter as ctk
 import tkinter as tk
+from core.win32_utils import get_dpi_scale
 
 # ─────────────────────────────────────────
 #  전체화면 영역 선택기
@@ -54,10 +55,11 @@ class RegionSelector(ctk.CTkToplevel):
         )
 
     def _on_release(self, e):
-        x1 = min(self._sx, e.x_root)
-        y1 = min(self._sy, e.y_root)
-        x2 = max(self._sx, e.x_root)
-        y2 = max(self._sy, e.y_root)
+        s = get_dpi_scale()
+        x1 = int(min(self._sx, e.x_root) * s)
+        y1 = int(min(self._sy, e.y_root) * s)
+        x2 = int(max(self._sx, e.x_root) * s)
+        y2 = int(max(self._sy, e.y_root) * s)
         if (x2 - x1) < 5 or (y2 - y1) < 5:
             return
         self._finish((x1, y1, x2, y2))
@@ -99,7 +101,8 @@ class PointSelector(ctk.CTkToplevel):
         self.bind("<Escape>", lambda e: self._finish(None))
 
     def _on_click(self, e):
-        self._finish((e.x_root, e.y_root))
+        s = get_dpi_scale()
+        self._finish((int(e.x_root * s), int(e.y_root * s)))
 
     def _finish(self, result):
         self.destroy()
