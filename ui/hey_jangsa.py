@@ -1208,7 +1208,11 @@ class AppHeyJangsa(ctk.CTk):
 
         with self._chat_lock:
             force_foreground(hwnd)
-            time.sleep(0.2)
+            time.sleep(0.15)
+            # force_foreground의 ALT 시뮬레이션이 Alt+Enter로 먹히는 것 방지
+            import win32con as _wc
+            win32api.keybd_event(_wc.VK_MENU, 0, _wc.KEYEVENTF_KEYUP, 0)
+            time.sleep(0.15)
 
             # Enter로 채팅창 열기
             if _ar_mod._arduino and _ar_mod._arduino.is_open:
@@ -2064,7 +2068,11 @@ class AppHeyJangsa(ctk.CTk):
                     text="⚠ 거래창 없음", text_color="#EF4444"))
                 return False
         else:
-            self.log("⚠ 거래창 감지 영역 미설정 — 창 열림 확인 불가 (설정 권장)")
+            self.log("⚠ 거래창 감지 영역 미설정 — 10초 대기 후 진행")
+            for _ in range(10):
+                if not self.running:
+                    return False
+                time.sleep(1.0)
 
         # ── ② 돈 영역 미지정 시 타임아웃 대기 ──────────────────────
         if not self._money_region:
