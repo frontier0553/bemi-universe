@@ -2,7 +2,7 @@
 """
 배미유니버스 런처 — 자동 업데이트 + 실행
 """
-import os, sys, json, shutil, threading, subprocess, tempfile
+import os, json, shutil, threading, subprocess, tempfile, zipfile
 import urllib.request
 import tkinter as tk
 from tkinter import ttk
@@ -10,9 +10,33 @@ from tkinter import ttk
 REPO        = "frontier0553/bemi-universe"
 RAW_BASE    = f"https://raw.githubusercontent.com/{REPO}/main"
 API_BASE    = f"https://api.github.com/repos/{REPO}"
-MAIN_EXE    = "배미유니버스.exe"
+ZIP_NAME    = "bemi-universe.zip"
+MAIN_EXE    = "bemi-universe.exe"
 VERSION_FILE = "version.txt"
-BASE_DIR    = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__))
+BASE_DIR    = r"C:\bemiuniverse"
+os.makedirs(BASE_DIR, exist_ok=True)
+
+
+def _get_mac():
+    import uuid
+    mac = uuid.getnode()
+    return ":".join(f"{(mac >> (8*i)) & 0xff:02X}" for i in reversed(range(6)))
+
+def _check_whitelist():
+    try:
+        url = f"{RAW_BASE}/whitelist.txt"
+        with urllib.request.urlopen(url, timeout=8) as r:
+            content = r.read().decode("utf-8")
+        mac = _get_mac()
+        for line in content.splitlines():
+            line = line.strip()
+            if line.startswith("#") or "|" not in line:
+                continue
+            if line.split("|")[1].strip().upper() == mac:
+                return True, mac
+        return False, mac
+    except Exception:
+        return True, ""  # 네트워크 오류 시 통과
 
 
 def _local_version():
@@ -29,7 +53,7 @@ def _get_download_url():
     with urllib.request.urlopen(url, timeout=8) as r:
         data = json.loads(r.read())
     for asset in data.get("assets", []):
-        if asset["name"] == MAIN_EXE:
+        if asset["name"] == ZIP_NAME:
             return asset["browser_download_url"]
     return None
 
@@ -61,53 +85,80 @@ class UpdateWindow(tk.Tk):
         self._sub.configure(text=sub)
 
     def _run(self):
+        # 화이트리스트 체크
+        allowed, mac = _check_whitelist()
+        if not allowed:
+            self._set("접근 권한 없음", f"아래 MAC 주소를 관리자에게 전달하세요")
+            self.after(0, lambda: self._sub.configure(
+                text=mac, font=("Consolas", 11), fg="#FACC15"))
+            self._bar.stop()
+            self._bar.configure(mode="determinate", value=0)
+            return
+
+        exe = os.path.join(BASE_DIR, MAIN_EXE)
+        first_install = not os.path.exists(exe)
+
         try:
             local  = _local_version()
             remote = _remote_version()
         except Exception as e:
+            if first_install:
+                self._set("네트워크 오류 — 인터넷 연결 필요")
+                return
             self._set("네트워크 오류 — 오프라인으로 실행")
             self.after(1500, self._launch)
             return
 
-        if local == remote:
+        if not first_install and local == remote:
             self._set(f"최신 버전 ({local})")
             self.after(800, self._launch)
             return
 
-        # 업데이트 필요
-        self._set(f"업데이트 중... {local} → {remote}")
+        if first_install:
+            self._set(f"최초 설치 중... v{remote}")
+        else:
+            self._set(f"업데이트 중... {local} → {remote}")
+
         try:
             dl_url = _get_download_url()
             if not dl_url:
                 raise RuntimeError("다운로드 URL 없음")
 
-            tmp = tempfile.mktemp(suffix=".exe")
+            tmp = tempfile.mktemp(suffix=".zip")
 
             def _progress(count, block, total):
                 if total > 0:
                     pct = min(count * block / total * 100, 100)
-                    self.after(0, lambda p=pct: (
+                    self.after(0, lambda p=pct, t=total: (
                         self._bar.stop(),
                         self._bar.configure(mode="determinate", value=p),
-                        self._sub.configure(text=f"{p:.0f}%  ({total // 1024 // 1024} MB)")
+                        self._sub.configure(text=f"{p:.0f}%  ({t // 1024 // 1024} MB)")
                     ))
 
             urllib.request.urlretrieve(dl_url, tmp, _progress)
 
-            dest = os.path.join(BASE_DIR, MAIN_EXE)
-            # 실행 중인 EXE 교체: 임시 이름으로 백업 후 교체
-            old = dest + ".old"
-            if os.path.exists(old):
-                os.remove(old)
-            if os.path.exists(dest):
-                os.rename(dest, old)
-            shutil.move(tmp, dest)
+            self._set("압축 해제 중...")
+            self.after(0, lambda: self._bar.configure(mode="indeterminate"))
+            self.after(0, lambda: self._bar.start(12))
 
-            # 버전 파일 갱신
+            # 기존 파일 정리 후 압축 해제
+            for f in os.listdir(BASE_DIR):
+                p = os.path.join(BASE_DIR, f)
+                if f != VERSION_FILE:
+                    try:
+                        if os.path.isdir(p): shutil.rmtree(p)
+                        else: os.remove(p)
+                    except Exception:
+                        pass
+
+            with zipfile.ZipFile(tmp, "r") as zf:
+                zf.extractall(BASE_DIR)
+            os.remove(tmp)
+
             with open(os.path.join(BASE_DIR, VERSION_FILE), "w") as f:
                 f.write(remote + "\n")
 
-            self._set(f"업데이트 완료! ({remote})")
+            self._set(f"설치 완료! ({remote})")
             self.after(800, self._launch)
 
         except Exception as e:
