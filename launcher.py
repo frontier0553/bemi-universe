@@ -14,7 +14,7 @@ ZIP_NAME         = "bemi-universe.zip"
 MAIN_EXE         = "bemi-universe.exe"
 VERSION_FILE     = "version.txt"
 BASE_DIR         = r"C:\bemiuniverse"
-WHITELIST_ENABLED = True   # False 로 바꾸면 화이트리스트 검사 비활성화
+WHITELIST_ENABLED = False   # False 로 바꾸면 화이트리스트 검사 비활성화
 os.makedirs(BASE_DIR, exist_ok=True)
 
 
@@ -62,7 +62,8 @@ def _get_download_url():
 class UpdateWindow(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("배미유니버스 업데이트")
+        local = _local_version()
+        self.title(f"배미유니버스 업데이트  v{local}")
         self.geometry("360x120")
         self.resizable(False, False)
         self.configure(bg="#1e1e2e")
@@ -113,6 +114,7 @@ class UpdateWindow(tk.Tk):
             return
 
         if not first_install and local == remote:
+            self.after(0, lambda v=local: self.title(f"배미유니버스 업데이트  v{v}"))
             self._set(f"최신 버전 ({local})")
             self.after(800, self._launch)
             return
@@ -161,6 +163,7 @@ class UpdateWindow(tk.Tk):
             with open(os.path.join(BASE_DIR, VERSION_FILE), "w") as f:
                 f.write(remote + "\n")
 
+            self.after(0, lambda v=remote: self.title(f"배미유니버스 업데이트  v{v}"))
             self._set(f"설치 완료! ({remote})")
             self.after(800, self._launch)
 
