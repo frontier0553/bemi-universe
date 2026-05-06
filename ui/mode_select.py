@@ -1,7 +1,15 @@
 # -*- coding: utf-8 -*-
+import os
 import customtkinter as ctk
 
 from core.icon import _apply_icon, _build_icon_image
+
+def _load_version():
+    p = os.path.join(r"C:\bemiuniverse", "version.txt")
+    if os.path.exists(p):
+        return open(p).read().strip()
+    p2 = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "version.txt")
+    return open(p2).read().strip() if os.path.exists(p2) else "?"
 
 # ─────────────────────────────────────────
 #  모드 선택 화면 (페이지 전환)
@@ -12,7 +20,7 @@ class ModeSelectWindow(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.selected_mode = None
-        self.title("배미유니버스")
+        self.title(f"배미유니버스  v{_load_version()}")
         self.geometry(f"{self.W}x{self.H}")
         self.after(100, lambda: _apply_icon(self))
         self.resizable(False, False)
@@ -78,7 +86,7 @@ class ModeSelectWindow(ctk.CTk):
             ctk.CTkLabel(top, text="⚡", font=ctk.CTkFont(size=36)).pack()
         ctk.CTkLabel(top, text="배미유니버스", font=ctk.CTkFont(size=26, weight="bold"),
                      text_color="#FFFFFF").pack(pady=(4, 0))
-        ctk.CTkLabel(top, text="모드를 선택하세요", font=ctk.CTkFont(size=13),
+        ctk.CTkLabel(top, text=f"모드를 선택하세요  |  v{_load_version()}", font=ctk.CTkFont(size=13),
                      text_color="#64748B").pack(pady=(6, 0))
         ctk.CTkFrame(f, height=1, fg_color="#1E293B").pack(fill="x", padx=40, pady=22)
 
