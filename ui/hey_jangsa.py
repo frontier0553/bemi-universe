@@ -1140,7 +1140,11 @@ class AppHeyJangsa(ctk.CTk):
         """MP OCR → 현재 MP 정수 반환 (None=실패). region 미지정 시 self._mp_region 사용.
         최대 MP(self._mp_max_var) 초과 시 OCR 오류로 간주해 None 반환."""
         r = region or self._mp_region
-        if not r or not _ocr_mod.OCR_ENGINE:
+        if not r:
+            self.log("MP OCR: region 미설정", tag="OCR")
+            return None
+        if not _ocr_mod.OCR_ENGINE:
+            self.log("MP OCR: OCR 엔진 없음", tag="OCR")
             return None
         try:
             mp_max = int(self._mp_max_var.get())
@@ -1859,14 +1863,24 @@ class AppHeyJangsa(ctk.CTk):
     def _ocr_money_amount(self):
         """커서를 금화 슬롯으로 이동 → '아데나 (N)' 텍스트 표시 → bbox OCR
         하단 텍스트 영역만 잘라낸 후 엔진별 전처리 × 3회 → 자릿수 최다 반환"""
-        if not self._money_region or not _ocr_mod.OCR_ENGINE:
+        if not self._money_region:
+            self.log("돈OCR: money_region 미설정", tag="OCR")
+            return None
+        if not _ocr_mod.OCR_ENGINE:
+            self.log("돈OCR: OCR 엔진 없음", tag="OCR")
             return None
         if self._money_hover_pos:
             hx, hy = self._money_hover_pos
-            for dx in (-5, 5, -5, 5, 0):
-                win32api.SetCursorPos((hx + dx, hy))
-                time.sleep(0.07)
-            time.sleep(0.4)
+            self.log(f"돈OCR: 커서 이동 → ({hx},{hy})", tag="OCR")
+            try:
+                for dx in (-5, 5, -5, 5, 0):
+                    win32api.SetCursorPos((hx + dx, hy))
+                    time.sleep(0.07)
+                time.sleep(0.4)
+            except Exception as e:
+                self.log(f"돈OCR: SetCursorPos 실패 — {e}", tag="OCR")
+        else:
+            self.log("돈OCR: hover_pos 미설정 — 커서 이동 생략", tag="OCR")
         x1, y1, x2, y2 = self._money_region
         from PIL import ImageEnhance, ImageOps
         candidates = []
