@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+dist/
+build/
+*.spec
+config.json
+config_hj.json
+config_hunt.json
+bemi_icon.ico
