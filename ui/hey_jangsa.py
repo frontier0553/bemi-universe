@@ -2047,14 +2047,14 @@ class AppHeyJangsa(ctk.CTk):
                 thr = float(self._trade_win_thr_var.get())
             except Exception:
                 thr = 20.0
-            for attempt in range(10):           # 최대 10초
+            for attempt in range(5):           # 최대 5초
                 if not self.running:
                     return False
                 try:
                     x1, y1, x2, y2 = self._trade_win_region
                     img = ImageGrab.grab(bbox=(x1, y1, x2, y2), all_screens=True).convert("RGB")
                     ratio = self._dark_ratio(list(img.getdata()))
-                    self.log(f"  거래창 체크 {attempt+1}/10: 어두운픽셀 {ratio:.1f}% (기준 {thr:.0f}%)")
+                    self.log(f"  거래창 체크 {attempt+1}/5: 어두운픽셀 {ratio:.1f}% (기준 {thr:.0f}%)")
                 except Exception:
                     ratio = 0.0
                 if self._detect_trade_window():
@@ -2063,16 +2063,17 @@ class AppHeyJangsa(ctk.CTk):
                     break
                 time.sleep(1.0)
             if not win_found:
-                self.log("⚠ 거래창 10초 내 미감지 → 손님이 취소한 것으로 판단")
+                self.log("⚠ 거래창 5초 내 미감지 → 대기 상태로 초기화")
                 self.after(0, lambda: self._status_lbl.configure(
                     text="⚠ 거래창 없음", text_color="#EF4444"))
                 return False
         else:
-            self.log("⚠ 거래창 감지 영역 미설정 — 10초 대기 후 진행")
-            for _ in range(10):
+            self.log("⚠ 거래창 감지 영역 미설정 — 5초 대기 후 초기화")
+            for _ in range(5):
                 if not self.running:
                     return False
                 time.sleep(1.0)
+            return False
 
         # ── ② 돈 영역 미지정 시 타임아웃 대기 ──────────────────────
         if not self._money_region:
