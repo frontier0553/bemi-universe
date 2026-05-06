@@ -2,10 +2,14 @@
 """
 배미유니버스 런처 — 자동 업데이트 + 실행
 """
-import os, json, shutil, threading, subprocess, tempfile, zipfile
+import os, json, shutil, threading, subprocess, tempfile, zipfile, ssl
 import urllib.request
 import tkinter as tk
 from tkinter import ttk
+
+_ssl = ssl.create_default_context()
+_ssl.check_hostname = False
+_ssl.verify_mode = ssl.CERT_NONE
 
 REPO             = "frontier0553/bemi-universe"
 RAW_BASE         = f"https://raw.githubusercontent.com/{REPO}/main"
@@ -26,7 +30,7 @@ def _get_mac():
 def _check_whitelist():
     try:
         url = f"{RAW_BASE}/whitelist.txt"
-        with urllib.request.urlopen(url, timeout=8) as r:
+        with urllib.request.urlopen(url, timeout=8, context=_ssl) as r:
             content = r.read().decode("utf-8")
         mac = _get_mac()
         for line in content.splitlines():
@@ -46,12 +50,12 @@ def _local_version():
 
 def _remote_version():
     url = f"{RAW_BASE}/{VERSION_FILE}"
-    with urllib.request.urlopen(url, timeout=8) as r:
+    with urllib.request.urlopen(url, timeout=8, context=_ssl) as r:
         return r.read().decode().strip()
 
 def _get_download_url():
     url = f"{API_BASE}/releases/latest"
-    with urllib.request.urlopen(url, timeout=8) as r:
+    with urllib.request.urlopen(url, timeout=8, context=_ssl) as r:
         data = json.loads(r.read())
     for asset in data.get("assets", []):
         if asset["name"] == ZIP_NAME:
@@ -140,7 +144,18 @@ class UpdateWindow(tk.Tk):
                         self._sub.configure(text=f"{p:.0f}%  ({t // 1024 // 1024} MB)")
                     ))
 
-            urllib.request.urlretrieve(dl_url, tmp, _progress)
+            opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=_ssl))
+            with opener.open(dl_url, timeout=120) as resp:
+                total = int(resp.headers.get("Content-Length", 0))
+                downloaded = 0
+                with open(tmp, "wb") as f:
+                    while True:
+                        chunk = resp.read(65536)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        _progress(downloaded, 1, total)
 
             self._set("압축 해제 중...")
             self.after(0, lambda: self._bar.configure(mode="indeterminate"))
