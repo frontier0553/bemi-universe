@@ -78,6 +78,7 @@ class AppHeyJangsa(ctk.CTk):
         self._allowed_prices_var = ctk.StringVar(value="500, 1000")  # 하위호환 보존
         self._price_per_shot_var = ctk.StringVar(value="150")        # 방당 가격(아데나)
         # 엠탐중 (MP 부족 시 대기 알림)
+        self._mp_scan_interval_var = ctk.StringVar(value="10")  # MP 스캔 간격(초)
         self._mp_low_enabled_var  = ctk.BooleanVar(value=True)
         self._mp_low_msg_var      = ctk.StringVar(value="엠탐중")
         self._mp_low_interval_var = ctk.StringVar(value="30")
@@ -822,6 +823,10 @@ class AppHeyJangsa(ctk.CTk):
         ctk.CTkButton(mr, text="📐 영역 지정", width=96, height=26,
                       fg_color=G, hover_color="#16A34A", font=ctk.CTkFont(size=11),
                       command=self._select_mp_region).pack(side="left")
+        ctk.CTkLabel(mr, text="스캔간격(초):", font=ctk.CTkFont(size=11),
+                     text_color="#94A3B8").pack(side="left", padx=(12, 2))
+        ctk.CTkEntry(mr, textvariable=self._mp_scan_interval_var,
+                     width=44, font=ctk.CTkFont(size=11)).pack(side="left")
 
         # 서브 MP 영역 (2대 모드 전용) — 메인 바로 아래
         self._sub_mp_frame = ctk.CTkFrame(mp_box, fg_color="transparent")
@@ -1375,7 +1380,7 @@ class AppHeyJangsa(ctk.CTk):
                 self._announce_shots()
 
     def _mp_poll_loop(self):
-        """백그라운드에서 3초마다 MP를 캡처해 _cached_mp / _cached_mp2 갱신."""
+        """백그라운드에서 MP를 캡처해 _cached_mp / _cached_mp2 갱신."""
         while self.running:
             if self._mp_region:
                 val = self._read_mp()
@@ -1385,8 +1390,12 @@ class AppHeyJangsa(ctk.CTk):
                 val2 = self._read_mp(region=self._sub_mp_region)
                 if val2 is not None:
                     self._cached_mp2 = val2
-            # 3초 대기 (0.2초 단위로 중단 체크)
-            end_t = time.time() + 3.0
+            try:
+                interval = float(self._mp_scan_interval_var.get())
+            except Exception:
+                interval = 10.0
+            interval = max(3.0, interval)
+            end_t = time.time() + interval
             while time.time() < end_t:
                 if not self.running:
                     return
@@ -1677,6 +1686,7 @@ class AppHeyJangsa(ctk.CTk):
             "hj_mp_region":      list(self._mp_region) if self._mp_region else None,
             "hj_mp_per_shot":    self._mp_per_shot_var.get(),
             "hj_mp_max":         self._mp_max_var.get(),
+            "hj_mp_scan_interval": self._mp_scan_interval_var.get(),
             "hj_mp_announce":    self._mp_announce_var.get(),
             "hj_mp_tmpl":        self._mp_announce_tmpl.get(),
             "hj_mp_ann_interval":self._mp_announce_interval.get(),
@@ -1758,6 +1768,7 @@ class AppHeyJangsa(ctk.CTk):
             if mpr: self._mp_region = tuple(mpr)
             self._mp_per_shot_var.set(cfg.get("hj_mp_per_shot",  "20"))
             self._mp_max_var.set(cfg.get("hj_mp_max",            "200"))
+            self._mp_scan_interval_var.set(cfg.get("hj_mp_scan_interval", "10"))
             self._mp_announce_var.set(cfg.get("hj_mp_announce",  True))
             self._mp_announce_tmpl.set(cfg.get("hj_mp_tmpl",     "{n}방 가능합니다"))
             self._mp_announce_interval.set(cfg.get("hj_mp_ann_interval", "30"))
