@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import re
+import re, os, sys
 
 # ─────────────────────────────────────────
 #  OCR 엔진 초기화
@@ -7,11 +7,18 @@ import re
 OCR_ENGINE = None
 _ocr_reader = None
 
+def _get_model_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.join(sys._MEIPASS, 'easyocr_models')
+    return os.path.join(os.path.expanduser('~'), '.EasyOCR', 'model')
+
 def _init_ocr():
     global OCR_ENGINE, _ocr_reader
     try:
         import easyocr
-        _ocr_reader = easyocr.Reader(['ko', 'en'], gpu=False, verbose=False)
+        model_dir = _get_model_dir()
+        _ocr_reader = easyocr.Reader(['ko', 'en'], gpu=False, verbose=False,
+                                     model_storage_directory=model_dir)
         OCR_ENGINE = "easyocr"
         return
     except ImportError:
