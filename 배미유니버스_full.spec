@@ -26,7 +26,7 @@ if _model_src.exists():
     for _pth in _model_src.glob('*.pth'):
         datas.append((str(_pth), 'easyocr_models'))
 
-for _pkg in ('customtkinter', 'easyocr', 'torch'):
+for _pkg in ('customtkinter', 'easyocr', 'torch', 'torchvision'):
     _r = collect_all(_pkg)
     datas += _r[0]; binaries += _r[1]; hiddenimports += _r[2]
 
@@ -51,7 +51,7 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        'torchaudio', 'torchvision',
+        'torchaudio',
         'torch.cuda', 'torch.distributed',
         'IPython', 'jupyter', 'matplotlib',
     ],
