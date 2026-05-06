@@ -56,8 +56,10 @@ class AppHeyJangsa(ctk.CTk):
         self._run_evt      = threading.Event()
         self._chat_lock    = threading.Lock()   # 채팅 동시 전송 방지
         self._log_box      = None   # 미사용(하위호환)
-        self._hj_log_popup = None
-        self._hj_log_box   = None
+        self._hj_log_popup  = None
+        self._hj_log_box    = None
+        self._sales_popup   = None
+        self._sales_records = []   # [{"time": str, "amount": int, "shots": int}]
 
         # 설정 변수
         self._exchange_key_var   = ctk.StringVar(value="F5")
@@ -287,7 +289,12 @@ class AppHeyJangsa(ctk.CTk):
                       fg_color="transparent", border_width=1, border_color="#334155",
                       text_color="#FFFFFF", font=ctk.CTkFont(size=12),
                       command=self._toggle_hj_log_popup
-                      ).pack(side="right", padx=(0, 12))
+                      ).pack(side="right", padx=(0, 4))
+        ctk.CTkButton(hdr, text="💰 판매기록", width=100, height=32,
+                      fg_color="transparent", border_width=1, border_color="#334155",
+                      text_color="#FFFFFF", font=ctk.CTkFont(size=12),
+                      command=self._toggle_sales_popup
+                      ).pack(side="right", padx=(0, 4))
 
         if self.mode == "헤이장사_싱글":
             self._build_fixed_ctrl_panel()
@@ -920,6 +927,7 @@ class AppHeyJangsa(ctk.CTk):
 
         # 로그 팝업은 UI 완성 직후 생성
         self.after(200, self._build_hj_log_popup)
+        self.after(200, self._build_sales_popup)
 
     # ── 로그 팝업 ─────────────────────────
     def _build_hj_log_popup(self):
@@ -961,6 +969,76 @@ class AppHeyJangsa(ctk.CTk):
     def _hide_hj_log_popup(self):
         if self._hj_log_popup:
             self._hj_log_popup.withdraw()
+
+    # ── 판매 기록 팝업 ───────────────────────
+    def _build_sales_popup(self):
+        if self._sales_popup is not None:
+            return
+        popup = ctk.CTkToplevel(self)
+        popup.title("판매 기록")
+        popup.geometry("500x400")
+        popup.configure(fg_color="#0A0F1E")
+        popup.protocol("WM_DELETE_WINDOW", popup.withdraw)
+
+        hdr = ctk.CTkFrame(popup, fg_color="#1E293B", corner_radius=0, height=36)
+        hdr.pack(fill="x"); hdr.pack_propagate(False)
+        ctk.CTkLabel(hdr, text="  💰 판매 기록",
+                     font=ctk.CTkFont(size=13, weight="bold"), text_color="white").pack(side="left", padx=8)
+        self._sales_total_lbl = ctk.CTkLabel(hdr, text="합계: 0 아데나",
+                     font=ctk.CTkFont(size=12), text_color="#22C55E")
+        self._sales_total_lbl.pack(side="left", padx=16)
+        ctk.CTkButton(hdr, text="🗑 초기화", width=80, height=26,
+                      fg_color="transparent", border_width=1, border_color="#334155",
+                      font=ctk.CTkFont(size=11),
+                      command=self._clear_sales).pack(side="right", padx=8)
+
+        # 컬럼 헤더
+        col_frame = ctk.CTkFrame(popup, fg_color="#1E293B", height=28)
+        col_frame.pack(fill="x", padx=4, pady=(4, 0)); col_frame.pack_propagate(False)
+        for text, w in [("시각", 100), ("금액 (아데나)", 160), ("방 수", 80), ("누적 (아데나)", 140)]:
+            ctk.CTkLabel(col_frame, text=text, width=w, font=ctk.CTkFont(size=11, weight="bold"),
+                         text_color="#94A3B8", anchor="center").pack(side="left", padx=2)
+
+        self._sales_scroll = ctk.CTkScrollableFrame(popup, fg_color="#0A0F1E")
+        self._sales_scroll.pack(fill="both", expand=True, padx=4, pady=4)
+
+        self._sales_popup = popup
+        popup.withdraw()
+
+    def _toggle_sales_popup(self):
+        if self._sales_popup is None:
+            self._build_sales_popup()
+        if self._sales_popup.winfo_viewable():
+            self._sales_popup.withdraw()
+        else:
+            self._sales_popup.deiconify()
+            self._sales_popup.lift()
+
+    def _clear_sales(self):
+        self._sales_records.clear()
+        for w in self._sales_scroll.winfo_children():
+            w.destroy()
+        self._sales_total_lbl.configure(text="합계: 0 아데나")
+
+    def _add_sale_record(self, amount: int, shots: int):
+        ts = time.strftime("%H:%M:%S")
+        self._sales_records.append({"time": ts, "amount": amount, "shots": shots})
+        total = sum(r["amount"] for r in self._sales_records)
+        cumul = total
+
+        def _ui():
+            if self._sales_popup is None:
+                self._build_sales_popup()
+            row = ctk.CTkFrame(self._sales_scroll,
+                               fg_color="#0F1E38" if len(self._sales_records) % 2 == 0 else "#0A0F1E",
+                               height=28)
+            row.pack(fill="x", pady=1); row.pack_propagate(False)
+            for text, w in [(ts, 100), (f"{amount:,}", 160), (f"{shots}", 80), (f"{cumul:,}", 140)]:
+                ctk.CTkLabel(row, text=text, width=w, font=ctk.CTkFont(family="Consolas", size=11),
+                             text_color="#E2E8F0", anchor="center").pack(side="left", padx=2)
+            self._sales_total_lbl.configure(text=f"합계: {total:,} 아데나")
+            self._sales_scroll._parent_canvas.yview_moveto(1.0)
+        self.after(0, _ui)
 
     # ── 교환창 확인 설정 헬퍼 ───────────
     def _select_money_region(self):
@@ -2121,32 +2199,28 @@ class AppHeyJangsa(ctk.CTk):
                         text_color="#22C55E" if m else "#EF4444")
                 ))
                 if match:
-                    # 상대방 회색 감지 대기 → 봇 OK 클릭
+                    # 상대방 회색 감지 대기 → 봇 OK 클릭 (1초 간격)
                     if self._trade_gray_region:
                         self.after(0, lambda: self._status_lbl.configure(
                             text="⏳ 상대방 OK 대기", text_color="#F59E0B"))
-                        self.log("⏳ 상대방 거래창 회색 대기...")
+                        self.log("⏳ 상대방 거래창 회색 대기 (1초 간격)...")
                         try:
                             thr = float(self._trade_gray_threshold_var.get())
                         except Exception:
                             thr = 80.0
                         gray_deadline = time.time() + 30.0
                         gray_ok = False
-                        last_log2 = 0.0
                         while self.running and time.time() < gray_deadline:
                             if not self._trade_win_open():
                                 self.log("⚠ 거래창 닫힘 → 손님 취소")
                                 return False
                             ratio = self._gray_ratio()
-                            now = time.time()
-                            if now - last_log2 >= 2.0:
-                                self.log(f"  회색: {ratio:.1f}% / 기준: {thr:.0f}%")
-                                last_log2 = now
+                            self.log(f"  회색: {ratio:.1f}% / 기준: {thr:.0f}%")
                             if ratio >= thr:
-                                self.log(f"⬛ 상대방 OK 감지! ({ratio:.1f}%)")
+                                self.log(f"⬛ 상대방 OK 감지! ({ratio:.1f}%) → 즉시 진행")
                                 gray_ok = True
                                 break
-                            time.sleep(0.3)
+                            time.sleep(1.0)
                         if not gray_ok:
                             self.log("⏱ 30초 초과 — 상대방 미확인 → Cancel")
                             if self._cancel_pos:
@@ -2162,6 +2236,7 @@ class AppHeyJangsa(ctk.CTk):
                         self.log("⚠ OK 위치 미설정 — Y 키만 입력")
                         time.sleep(1.0)
                         self._press_key_y()
+                    self._add_sale_record(amount, n_bought)
                     return True
                 else:
                     elapsed = time.time() - start
