@@ -1296,43 +1296,60 @@ class AppHeyJangsa(ctk.CTk):
 
     def _read_mp_bar(self, region, mp_max: int) -> int | None:
         """MP 바 픽셀 비율로 현재 MP 계산.
-        'MP: 40/88' 흰색 텍스트 오버레이를 제외하고 채워진 너비 측정."""
+        흰색 텍스트 제외 후, 왼쪽(채워진) vs 오른쪽(빈) 상대 밝기로 임계값 결정."""
         if not region:
             return None
         try:
             x1, y1, x2, y2 = region
             img = ImageGrab.grab(bbox=(x1, y1, x2, y2), all_screens=True).convert("RGB")
             w, h = img.size
-            if w < 10 or h < 4:
+            if w < 20 or h < 4:
                 return None
             pixels = list(img.getdata())
 
-            # 상하 중간 50% 행만 스캔 (텍스트가 가운데 높이에 있어도 바 픽셀과 구분)
-            y0    = h // 4
+            y0 = h // 4
             y_end = h * 3 // 4
             if y0 >= y_end:
                 y0, y_end = 0, h
             ys = range(y0, y_end)
 
-            filled_x = 0
-            for x in range(w):
-                non_white_sums = []
+            def col_avg(x):
+                """흰색 텍스트 제외 후 열 평균 밝기"""
+                sums = []
                 for y in ys:
                     r, g, b = pixels[y * w + x]
-                    # 흰색 텍스트 픽셀 제외 (r,g,b 모두 185 이상이면 텍스트)
-                    if r > 185 and g > 185 and b > 185:
+                    if r > 185 and g > 185 and b > 185:  # 흰색 텍스트 스킵
                         continue
-                    non_white_sums.append(r + g + b)
-                if not non_white_sums:
-                    continue
-                # 비흰색 픽셀 평균 밝기 ≥ 200 → 바 채워진 열
-                # 채워진 바: 황금/파란 계열 합계 ~300-400
-                # 빈 배경: 어두운 합계 ~60-150
-                if sum(non_white_sums) / len(non_white_sums) >= 200:
+                    sums.append(r + g + b)
+                return sum(sums) / len(sums) if sums else 0
+
+            # 밝기 프로파일 생성 + 3열 스무딩
+            raw = [col_avg(x) for x in range(w)]
+            profile = []
+            for i in range(w):
+                vals = [raw[j] for j in (i - 1, i, i + 1) if 0 <= j < w]
+                profile.append(sum(vals) / len(vals))
+
+            g_max = max(profile)
+            g_min = min(profile)
+
+            # 밝기 차이가 작으면(≤25) 바가 거의 꽉 찬 것 → max 반환
+            if g_max - g_min <= 25:
+                return mp_max
+
+            # 채워진/빈 구간 임계값: 범위의 40% 지점
+            threshold = g_min + (g_max - g_min) * 0.4
+
+            # 가장 오른쪽 채워진 열
+            filled_x = 0
+            for x in range(w):
+                if profile[x] >= threshold:
                     filled_x = x + 1
 
             ratio = filled_x / w
-            return max(0, round(ratio * mp_max))
+            val = max(0, round(ratio * mp_max))
+            self.log(f"MP바 밝기범위 {g_min:.0f}~{g_max:.0f} 임계값{threshold:.0f} ratio={ratio:.2f} → {val}", tag="MP")
+            return val
         except Exception:
             return None
 
