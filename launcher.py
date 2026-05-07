@@ -161,6 +161,19 @@ class UpdateWindow(tk.Tk):
             self.after(0, lambda: self._bar.configure(mode="indeterminate"))
             self.after(0, lambda: self._bar.start(12))
 
+            # 설정 파일 백업 (업데이트 후 복원)
+            CONFIG_FILES = ["config.json", "config_hj.json", "config_hunt.json"]
+            config_backup = {}
+            for cf in CONFIG_FILES:
+                for search_dir in [BASE_DIR, os.path.join(BASE_DIR, "_internal")]:
+                    cp = os.path.join(search_dir, cf)
+                    if os.path.exists(cp):
+                        try:
+                            with open(cp, "rb") as f:
+                                config_backup[cp] = f.read()
+                        except Exception:
+                            pass
+
             # 기존 파일 정리 후 압축 해제
             for f in os.listdir(BASE_DIR):
                 p = os.path.join(BASE_DIR, f)
@@ -174,6 +187,15 @@ class UpdateWindow(tk.Tk):
             with zipfile.ZipFile(tmp, "r") as zf:
                 zf.extractall(BASE_DIR)
             os.remove(tmp)
+
+            # 설정 파일 복원
+            for cp, data in config_backup.items():
+                try:
+                    os.makedirs(os.path.dirname(cp), exist_ok=True)
+                    with open(cp, "wb") as f:
+                        f.write(data)
+                except Exception:
+                    pass
 
             with open(os.path.join(BASE_DIR, VERSION_FILE), "w") as f:
                 f.write(remote + "\n")
