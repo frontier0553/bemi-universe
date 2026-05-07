@@ -1296,7 +1296,7 @@ class AppHeyJangsa(ctk.CTk):
 
     def _read_mp_bar(self, region, mp_max: int) -> int | None:
         """MP 바 픽셀 비율로 현재 MP 계산.
-        흰색 텍스트 제외 후, 왼쪽(채워진) vs 오른쪽(빈) 상대 밝기로 임계값 결정."""
+        슬라이딩 윈도우로 밝기 낙차가 가장 큰 경계점(fill→empty edge)을 검출."""
         if not region:
             return None
         try:
@@ -1314,41 +1314,49 @@ class AppHeyJangsa(ctk.CTk):
             ys = range(y0, y_end)
 
             def col_avg(x):
-                """흰색 텍스트 제외 후 열 평균 밝기"""
                 sums = []
                 for y in ys:
                     r, g, b = pixels[y * w + x]
-                    if r > 185 and g > 185 and b > 185:  # 흰색 텍스트 스킵
+                    if r > 185 and g > 185 and b > 185:  # 흰색 텍스트 제외
                         continue
                     sums.append(r + g + b)
                 return sum(sums) / len(sums) if sums else 0
 
-            # 밝기 프로파일 생성 + 3열 스무딩
+            # 밝기 프로파일 + 5열 스무딩
             raw = [col_avg(x) for x in range(w)]
             profile = []
             for i in range(w):
-                vals = [raw[j] for j in (i - 1, i, i + 1) if 0 <= j < w]
+                vals = [raw[j] for j in range(i - 2, i + 3) if 0 <= j < w]
                 profile.append(sum(vals) / len(vals))
 
-            g_max = max(profile)
-            g_min = min(profile)
+            # 좌(채워진 기준) vs 우(빈 기준) 비교
+            ref = max(3, w // 20)
+            left_avg  = sum(profile[:ref]) / ref
+            right_avg = sum(profile[-ref:]) / ref
 
-            # 밝기 차이가 작으면(≤25) 바가 거의 꽉 찬 것 → max 반환
-            if g_max - g_min <= 25:
+            # 좌우 차이가 없으면 꽉 찼거나 완전히 비었다고 판단 → max 반환
+            if left_avg - right_avg < 20:
                 return mp_max
 
-            # 채워진/빈 구간 임계값: 범위의 40% 지점
-            threshold = g_min + (g_max - g_min) * 0.4
+            # 슬라이딩 윈도우: 낙차가 가장 큰 x 지점 = fill→empty 경계
+            win = max(5, w // 15)
+            max_drop = 0
+            transition_x = w
+            for i in range(win, w - win):
+                left_w  = sum(profile[i - win:i]) / win
+                right_w = sum(profile[i:i + win]) / win
+                drop = left_w - right_w
+                if drop > max_drop:
+                    max_drop = drop
+                    transition_x = i
 
-            # 가장 오른쪽 채워진 열
-            filled_x = 0
-            for x in range(w):
-                if profile[x] >= threshold:
-                    filled_x = x + 1
-
-            ratio = filled_x / w
+            ratio = transition_x / w
             val = max(0, round(ratio * mp_max))
-            self.log(f"MP바 밝기범위 {g_min:.0f}~{g_max:.0f} 임계값{threshold:.0f} ratio={ratio:.2f} → {val}", tag="MP")
+            self.log(
+                f"MP바 L={left_avg:.0f} R={right_avg:.0f} "
+                f"edge={transition_x}/{w} drop={max_drop:.0f} ratio={ratio:.2f} → {val}",
+                tag="MP"
+            )
             return val
         except Exception:
             return None
