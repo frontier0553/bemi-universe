@@ -1319,16 +1319,25 @@ class AppHeyJangsa(ctk.CTk):
         self.log(f"💬 채팅: {text}")
 
     def _announce_shots(self):
-        """캐시된 MP로 가능 방 수 채팅 알림. 채팅 최대 6방, 내부 UI 실제값 표시."""
+        """광고 직전 MP 즉시 캡처 → 가능 방 수 채팅 알림."""
         try:
             per = max(1, int(self._mp_per_shot_var.get()))
         except Exception:
             per = 20
+        # 광고 시점에만 캡처 (거래 중에는 이 함수 자체가 호출 안 됨)
+        if self._mp_region:
+            val = self._read_mp()
+            if val is not None:
+                self._cached_mp = val
+        if self._dual_client_var.get() and self._sub_mp_region:
+            val2 = self._read_mp(region=self._sub_mp_region)
+            if val2 is not None:
+                self._cached_mp2 = val2
         mp1 = self._cached_mp  if self._cached_mp  is not None else None
         mp2 = self._cached_mp2 if (self._dual_client_var.get()
                                     and self._cached_mp2 is not None) else None
         if mp1 is None and mp2 is None:
-            self.log("⚠ MP 캐시 없음 — 방 수 알림 스킵")
+            self.log("⚠ MP 읽기 실패 — 방 수 알림 스킵")
             return
         n1 = mp1 // per if mp1 is not None else 0
         n2 = mp2 // per if mp2 is not None else 0
@@ -2458,7 +2467,7 @@ class AppHeyJangsa(ctk.CTk):
             threading.Thread(target=self._auto_light_loop, daemon=True, name="auto-light").start()
         # MP 3초 폴링 (캐시 갱신)
         if self._mp_region:
-            threading.Thread(target=self._mp_poll_loop, daemon=True, name="mp-poll").start()
+            # mp-poll 루프 제거 — 광고 직전에만 캡처
         # 평상시 광고 자동 시작
         self._start_ad()
 
@@ -2566,8 +2575,15 @@ class AppHeyJangsa(ctk.CTk):
                 self._set_state("DETECTED")
                 self.log("손님 감지!")
 
-                # MP 체크 → 0방이면 엠탐중 대기
+                # MP 체크 → 0방이면 엠탐중 대기 (즉시 캡처)
                 if self._mp_region:
+                    val = self._read_mp()
+                    if val is not None:
+                        self._cached_mp = val
+                    if self._dual_client_var.get() and self._sub_mp_region:
+                        val2 = self._read_mp(region=self._sub_mp_region)
+                        if val2 is not None:
+                            self._cached_mp2 = val2
                     n_avail = self._get_n_shots_from_mp()
                     if n_avail == 0:
                         self._set_state("MP_WAIT")
