@@ -880,7 +880,7 @@ class AppHeyJangsa(ctk.CTk):
         em_box.pack(fill="x", pady=(8, 4), padx=2)
         em_hdr = ctk.CTkFrame(em_box, fg_color="transparent"); em_hdr.pack(fill="x", padx=8, pady=(6, 2))
         ctk.CTkCheckBox(em_hdr, text="0방일 때 엠탐중 메시지 전송",
-                        variable=self._mp_low_enabled_var,
+                        variable=self._mp_low_enabled_var,  # 3방 미만 시 엠탐중
                         font=ctk.CTkFont(size=12), text_color="white").pack(side="left")
 
         em_msg = ctk.CTkFrame(em_box, fg_color="transparent"); em_msg.pack(fill="x", padx=8, pady=2)
@@ -1386,7 +1386,14 @@ class AppHeyJangsa(ctk.CTk):
             if not self.running:
                 return
             if self._trade_state in ("WATCHING", "DETECTED", "MP_WAIT"):
-                self._announce_shots()
+                # 3방 미만이면 엠탐중만 전송
+                n = self._get_n_shots_from_mp()
+                if self._mp_region and n >= 0 and n < 3:
+                    msg = self._mp_low_msg_var.get().strip() or "엠탐중"
+                    self.log(f"💤 MP {n}방 (3방 미만) — 엠탐중 전송")
+                    threading.Thread(target=lambda: self._send_chat_hj(msg), daemon=True).start()
+                else:
+                    self._announce_shots()
 
     def _mp_poll_loop(self):
         """백그라운드에서 MP를 캡처해 _cached_mp / _cached_mp2 갱신."""
@@ -1453,10 +1460,9 @@ class AppHeyJangsa(ctk.CTk):
             if not self.running:
                 return False
             n = self._get_n_shots_from_mp()
-            # UI 라벨 갱신
             lbl = f"MP: {n}방" if n >= 0 else "MP: 읽기 실패"
             self.after(0, lambda t=lbl: self._mp_status_lbl.configure(text=t))
-            if n >= 1:
+            if n >= 3:
                 self.log(f"✅ MP 회복 ({n}방) — 거래 재개")
                 return True
             self.log(f"💤 엠탐중 재전송 (현재 {n if n >= 0 else '?'}방)")
@@ -2609,7 +2615,7 @@ class AppHeyJangsa(ctk.CTk):
                         if val2 is not None:
                             self._cached_mp2 = val2
                     n_avail = self._get_n_shots_from_mp()
-                    if n_avail == 0:
+                    if n_avail < 3:
                         self._set_state("MP_WAIT")
                         recovered = self._wait_for_mp()
                         if not recovered or not self.running:
