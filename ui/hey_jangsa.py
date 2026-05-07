@@ -96,6 +96,12 @@ class AppHeyJangsa(ctk.CTk):
         self._mp_region          = None
         self._mp_per_shot_var    = ctk.StringVar(value="20")
         self._mp_max_var         = ctk.StringVar(value="200")   # OCR 이상값 필터 기준
+        # MP 바 감지 (픽셀 비율 방식)
+        self._mp_bar_region      = None   # 메인 MP바 영역
+        self._mp_bar_max_var     = ctk.StringVar(value="88")    # 메인 최대 MP
+        self._sub_mp_bar_region  = None   # 서브 MP바 영역
+        self._sub_mp_bar_max_var = ctk.StringVar(value="88")    # 서브 최대 MP
+        self._mp_bar_enabled_var = ctk.BooleanVar(value=True)   # 바 감지 사용 여부
         self._mp_announce_var      = ctk.BooleanVar(value=True)
         self._mp_announce_tmpl     = ctk.StringVar(value="{n}방 가능합니다")
         self._mp_announce_interval = ctk.StringVar(value="30")   # 반복 주기(초)
@@ -842,6 +848,46 @@ class AppHeyJangsa(ctk.CTk):
                       command=self._select_sub_mp_region).pack(side="left")
         self._dual_frames.append(self._sub_mp_frame)
 
+        # ── MP 바 감지 (픽셀 비율) ─────────────
+        mpb_box = ctk.CTkFrame(f7, fg_color="#0F172A", corner_radius=6)
+        mpb_box.pack(fill="x", pady=(2, 4), padx=2)
+
+        mpb_hdr = ctk.CTkFrame(mpb_box, fg_color="transparent"); mpb_hdr.pack(fill="x", padx=8, pady=(6, 2))
+        ctk.CTkCheckBox(mpb_hdr, text="MP바 픽셀 비율 감지 사용",
+                        variable=self._mp_bar_enabled_var,
+                        font=ctk.CTkFont(size=12), text_color="white").pack(side="left")
+
+        mpb1 = ctk.CTkFrame(mpb_box, fg_color="transparent"); mpb1.pack(fill="x", padx=8, pady=(2, 2))
+        ctk.CTkLabel(mpb1, text="MP바(메인):", font=ctk.CTkFont(size=12),
+                     text_color="white", width=90).pack(side="left")
+        self._mp_bar_region_lbl = ctk.CTkLabel(mpb1, text="미지정",
+                     font=ctk.CTkFont(size=11), text_color="#64748B")
+        self._mp_bar_region_lbl.pack(side="left", padx=(4, 8))
+        ctk.CTkButton(mpb1, text="📐 영역 지정", width=96, height=26,
+                      fg_color=G, hover_color="#16A34A", font=ctk.CTkFont(size=11),
+                      command=self._select_mp_bar_region).pack(side="left")
+        ctk.CTkLabel(mpb1, text="최대MP:", font=ctk.CTkFont(size=11),
+                     text_color="#94A3B8").pack(side="left", padx=(12, 2))
+        ctk.CTkEntry(mpb1, textvariable=self._mp_bar_max_var,
+                     width=52, height=26, font=ctk.CTkFont(size=11)).pack(side="left")
+
+        self._sub_mp_bar_frame = ctk.CTkFrame(mpb_box, fg_color="transparent")
+        mpb2 = ctk.CTkFrame(self._sub_mp_bar_frame, fg_color="transparent")
+        mpb2.pack(fill="x", padx=8, pady=(0, 6))
+        ctk.CTkLabel(mpb2, text="MP바(서브):", font=ctk.CTkFont(size=12),
+                     text_color="#60A5FA", width=90).pack(side="left")
+        self._sub_mp_bar_region_lbl = ctk.CTkLabel(mpb2, text="미지정",
+                     font=ctk.CTkFont(size=11), text_color="#64748B")
+        self._sub_mp_bar_region_lbl.pack(side="left", padx=(4, 8))
+        ctk.CTkButton(mpb2, text="📐 영역 지정", width=96, height=26,
+                      fg_color="#3B82F6", hover_color="#2563EB", font=ctk.CTkFont(size=11),
+                      command=self._select_sub_mp_bar_region).pack(side="left")
+        ctk.CTkLabel(mpb2, text="최대MP:", font=ctk.CTkFont(size=11),
+                     text_color="#94A3B8").pack(side="left", padx=(12, 2))
+        ctk.CTkEntry(mpb2, textvariable=self._sub_mp_bar_max_var,
+                     width=52, height=26, font=ctk.CTkFont(size=11)).pack(side="left")
+        self._dual_frames.append(self._sub_mp_bar_frame)
+
         mp2 = ctk.CTkFrame(f7, fg_color="transparent"); mp2.pack(fill="x", pady=2)
         ctk.CTkLabel(mp2, text="1방당 MP:", font=ctk.CTkFont(size=12),
                      text_color="white", width=80).pack(side="left")
@@ -1222,9 +1268,78 @@ class AppHeyJangsa(ctk.CTk):
                 self.log(f"MP 영역 지정: ({x1},{y1})~({x2},{y2})")
         self.after(300, lambda: RegionSelector(_cb))
 
-    def _read_mp(self, region=None) -> int | None:
-        """MP OCR → 현재 MP 정수 반환 (None=실패). region 미지정 시 self._mp_region 사용.
-        최대 MP(self._mp_max_var) 초과 시 OCR 오류로 간주해 None 반환."""
+    def _select_mp_bar_region(self):
+        self.withdraw()
+        def _cb(region):
+            self.deiconify()
+            if region:
+                self._mp_bar_region = region
+                x1, y1, x2, y2 = region
+                self._mp_bar_region_lbl.configure(
+                    text=f"({x1},{y1})→({x2},{y2})", text_color="#22C55E")
+                self._save_config_hj()
+                self.log(f"MP바(메인) 영역: ({x1},{y1})~({x2},{y2})")
+        self.after(300, lambda: RegionSelector(_cb))
+
+    def _select_sub_mp_bar_region(self):
+        self.withdraw()
+        def _cb(region):
+            self.deiconify()
+            if region:
+                self._sub_mp_bar_region = region
+                x1, y1, x2, y2 = region
+                self._sub_mp_bar_region_lbl.configure(
+                    text=f"({x1},{y1})→({x2},{y2})", text_color="#22C55E")
+                self._save_config_hj()
+                self.log(f"MP바(서브) 영역: ({x1},{y1})~({x2},{y2})")
+        self.after(300, lambda: RegionSelector(_cb))
+
+    def _read_mp_bar(self, region, mp_max: int) -> int | None:
+        """MP 바 픽셀 비율로 현재 MP 계산.
+        파란/밝은 픽셀이 끊기는 지점 기준으로 채워진 너비 측정."""
+        if not region:
+            return None
+        try:
+            x1, y1, x2, y2 = region
+            img = ImageGrab.grab(bbox=(x1, y1, x2, y2), all_screens=True).convert("RGB")
+            w, h = img.size
+            if w == 0:
+                return None
+            pixels = list(img.getdata())
+            # 열(x)별로 파란/밝은 픽셀이 있는지 확인 → 가장 오른쪽 채워진 x 찾기
+            filled_x = 0
+            for x in range(w):
+                col_bright = False
+                for y in range(h):
+                    r, g, b = pixels[y * w + x]
+                    # MP바: 파란 계열 또는 밝은 픽셀 (r<180, b>80 또는 전체 밝기>60)
+                    if (b > 80 and b >= r - 20) or (r + g + b) > 180:
+                        col_bright = True
+                        break
+                if col_bright:
+                    filled_x = x + 1
+            ratio = filled_x / w
+            return max(0, round(ratio * mp_max))
+        except Exception:
+            return None
+
+    def _read_mp(self, region=None, bar_region=None, bar_max_var=None) -> int | None:
+        """MP 읽기: 바 감지(픽셀 비율) 우선 → OCR 폴백.
+        region 미지정 시 self._mp_region 사용."""
+        # ── 바 감지 우선 ──────────────────────
+        is_main = (region is None or region == self._mp_region)
+        _bar_r   = bar_region  or (self._mp_bar_region     if is_main else self._sub_mp_bar_region)
+        _bar_max = bar_max_var or (self._mp_bar_max_var    if is_main else self._sub_mp_bar_max_var)
+        if self._mp_bar_enabled_var.get() and _bar_r:
+            try:
+                mp_max_bar = int(_bar_max.get())
+            except Exception:
+                mp_max_bar = 88
+            val = self._read_mp_bar(_bar_r, mp_max_bar)
+            if val is not None:
+                return val
+
+        # ── OCR 폴백 ─────────────────────────
         r = region or self._mp_region
         if not r:
             self.log("MP OCR: region 미설정", tag="OCR")
@@ -1330,7 +1445,7 @@ class AppHeyJangsa(ctk.CTk):
             if val is not None:
                 self._cached_mp = val
         if self._dual_client_var.get() and self._sub_mp_region:
-            val2 = self._read_mp(region=self._sub_mp_region)
+            val2 = self._read_mp(region=self._sub_mp_region, bar_region=self._sub_mp_bar_region, bar_max_var=self._sub_mp_bar_max_var)
             if val2 is not None:
                 self._cached_mp2 = val2
         mp1 = self._cached_mp  if self._cached_mp  is not None else None
@@ -1403,7 +1518,7 @@ class AppHeyJangsa(ctk.CTk):
                 if val is not None:
                     self._cached_mp = val
             if self._dual_client_var.get() and self._sub_mp_region:
-                val2 = self._read_mp(region=self._sub_mp_region)
+                val2 = self._read_mp(region=self._sub_mp_region, bar_region=self._sub_mp_bar_region, bar_max_var=self._sub_mp_bar_max_var)
                 if val2 is not None:
                     self._cached_mp2 = val2
             try:
@@ -1478,7 +1593,7 @@ class AppHeyJangsa(ctk.CTk):
             except Exception:
                 per = 20
             mp1 = self._read_mp() if self._mp_region else None
-            mp2 = self._read_mp(region=self._sub_mp_region) \
+            mp2 = self._read_mp(region=self._sub_mp_region, bar_region=self._sub_mp_bar_region, bar_max_var=self._sub_mp_bar_max_var) \
                   if self._dual_client_var.get() and self._sub_mp_region else None
             if mp1 is None and mp2 is None:
                 self.after(0, lambda: self._mp_status_lbl.configure(text="MP: OCR 실패"))
@@ -1568,7 +1683,7 @@ class AppHeyJangsa(ctk.CTk):
         if dual:
             if self._sub_mp_region:
                 # 서브 MP 영역 지정됨 → 실제 MP 읽어서 합산
-                mp2 = self._read_mp(region=self._sub_mp_region)
+                mp2 = self._read_mp(region=self._sub_mp_region, bar_region=self._sub_mp_bar_region, bar_max_var=self._sub_mp_bar_max_var)
                 n_mp2 = mp2 // mp_per if (mp2 is not None and mp_per > 0) else 0
                 lbl_mp += f"  서브MP:{mp2 if mp2 is not None else '?'}/{mp_per}→{n_mp2}방"
                 n_total = min(n_paid, n_mp + n_mp2)
@@ -1715,6 +1830,11 @@ class AppHeyJangsa(ctk.CTk):
             "hj_layout":         self._layout_var.get(),
             "hj_sub_mp_region":  list(self._sub_mp_region)  if self._sub_mp_region  else None,
             "hj_sub_shot_pos":   list(self._sub_shot_pos)   if self._sub_shot_pos   else None,
+            "hj_mp_bar_region":  list(self._mp_bar_region)     if self._mp_bar_region     else None,
+            "hj_mp_bar_max":     self._mp_bar_max_var.get(),
+            "hj_sub_mp_bar_region": list(self._sub_mp_bar_region) if self._sub_mp_bar_region else None,
+            "hj_sub_mp_bar_max": self._sub_mp_bar_max_var.get(),
+            "hj_mp_bar_enabled": self._mp_bar_enabled_var.get(),
         }
         path = os.path.join(_BASE_DIR, "config_hj.json")
         try:
@@ -1801,6 +1921,13 @@ class AppHeyJangsa(ctk.CTk):
             if smr: self._sub_mp_region = tuple(smr)
             ssp = cfg.get("hj_sub_shot_pos")
             if ssp: self._sub_shot_pos  = tuple(ssp)
+            mbr = cfg.get("hj_mp_bar_region")
+            if mbr: self._mp_bar_region = tuple(mbr)
+            self._mp_bar_max_var.set(cfg.get("hj_mp_bar_max", "88"))
+            smbr = cfg.get("hj_sub_mp_bar_region")
+            if smbr: self._sub_mp_bar_region = tuple(smbr)
+            self._sub_mp_bar_max_var.set(cfg.get("hj_sub_mp_bar_max", "88"))
+            self._mp_bar_enabled_var.set(cfg.get("hj_mp_bar_enabled", True))
             self.log(f"로드 완료: {cfg_path}", tag="CONFIG")
             # UI 라벨은 빌드 후 적용 (after idle)
             self.after(100, self._apply_pos_labels)
@@ -1844,6 +1971,14 @@ class AppHeyJangsa(ctk.CTk):
             if self._sub_mp_region:
                 x1, y1, x2, y2 = self._sub_mp_region
                 self._sub_mp_region_lbl.configure(
+                    text=f"({x1},{y1})→({x2},{y2})", text_color="#22C55E")
+            if self._mp_bar_region:
+                x1, y1, x2, y2 = self._mp_bar_region
+                self._mp_bar_region_lbl.configure(
+                    text=f"({x1},{y1})→({x2},{y2})", text_color="#22C55E")
+            if self._sub_mp_bar_region:
+                x1, y1, x2, y2 = self._sub_mp_bar_region
+                self._sub_mp_bar_region_lbl.configure(
                     text=f"({x1},{y1})→({x2},{y2})", text_color="#22C55E")
             # 2대 모드 저장값 반영 후 UI 토글
             if self._dual_client_var.get():
@@ -2611,7 +2746,7 @@ class AppHeyJangsa(ctk.CTk):
                     if val is not None:
                         self._cached_mp = val
                     if self._dual_client_var.get() and self._sub_mp_region:
-                        val2 = self._read_mp(region=self._sub_mp_region)
+                        val2 = self._read_mp(region=self._sub_mp_region, bar_region=self._sub_mp_bar_region, bar_max_var=self._sub_mp_bar_max_var)
                         if val2 is not None:
                             self._cached_mp2 = val2
                     n_avail = self._get_n_shots_from_mp()
