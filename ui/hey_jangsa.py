@@ -2058,50 +2058,64 @@ class AppHeyJangsa(ctk.CTk):
     _AD_SAFE_STATES = {"IDLE", "WATCHING"}
 
     def _ad_loop(self):
+        """1·2·3번 광고 순환 + 4번 방수 알림 독립 타이머 (같은 스레드, 별도 주기)"""
         idx = 0
+        last_mp_ad = 0.0  # 4번 마지막 전송 시각
+
         while self._ad_running:
-            # 거래 진행 중이면 전송 건너뜀
             if self._trade_state not in self._AD_SAFE_STATES:
                 self.log(f"거래 중({self._trade_state}) — 광고 전송 보류", tag="AD")
                 time.sleep(2.0)
                 continue
 
-            msgs = [v.get().strip() for v in self._ad_msg_vars if v.get().strip()]
-            if not msgs:
+            now = time.time()
+
+            # ── 4번 방수 알림 (독립 주기: MP 알림 주기 설정 사용) ──────────
+            mp4_tmpl = self._ad_msg_vars[3].get().strip()
+            if mp4_tmpl and "{n}" in mp4_tmpl:
+                try:
+                    mp4_interval = float(self._mp_announce_interval.get())
+                    mp4_rnd      = float(self._mp_announce_rnd.get())
+                except Exception:
+                    mp4_interval, mp4_rnd = 30.0, 5.0
+                mp4_interval = max(10.0, mp4_interval)
+                if now - last_mp_ad >= mp4_interval + random.uniform(0, mp4_rnd):
+                    try:
+                        per = max(1, int(self._mp_per_shot_var.get()))
+                    except Exception:
+                        per = 20
+                    mp1    = self._cached_mp  if self._cached_mp  is not None else 0
+                    mp2    = self._cached_mp2 if (self._dual_client_var.get()
+                                                   and self._cached_mp2 is not None) else 0
+                    real_n = (mp1 // per) + (mp2 // per)
+                    chat_n = min(real_n, self._ad_mp_cap)
+                    if real_n > 0:
+                        msg4 = mp4_tmpl.replace("{n}", str(chat_n))
+                        self.log(f"📢 [4번] MP={mp1}+{mp2} → {chat_n}방 알림", tag="AD")
+                        self._send_chat_hj(msg4)
+                    else:
+                        self.log("📢 [4번] 0방 — 방수 알림 건너뜀", tag="AD")
+                    last_mp_ad = now
+
+            # ── 1·2·3번 광고 순환 ──────────────────────────────────────────
+            regular_msgs = [v.get().strip() for v in self._ad_msg_vars[:3] if v.get().strip()]
+            if not regular_msgs:
                 time.sleep(1.0)
                 continue
-            msg = msgs[idx % len(msgs)]
+            msg = regular_msgs[idx % len(regular_msgs)]
             idx += 1
-            # {n} 포함 메시지 → MP 캐시로 방 수 치환 (채팅 최대 _ad_mp_cap, 내부 실제값)
-            if "{n}" in msg:
-                try:
-                    per = max(1, int(self._mp_per_shot_var.get()))
-                except Exception:
-                    per = 20
-                mp1 = self._cached_mp  if self._cached_mp  is not None else 0
-                mp2 = self._cached_mp2 if (self._dual_client_var.get()
-                                            and self._cached_mp2 is not None) else 0
-                real_n = (mp1 // per) + (mp2 // per)
-                chat_n = min(real_n, self._ad_mp_cap)
-                self.log(f"📢 MP={mp1}+{mp2} → 실제{real_n}방 / 채팅{chat_n}방", tag="AD")
-                if real_n <= 0:
-                    self.log("📢 0방 — MP 메시지 건너뜀", tag="AD")
-                    continue
-                msg = msg.replace("{n}", str(chat_n))
             self._send_chat_hj(msg)
             try:
                 interval = float(self._ad_interval_var.get())
+                rnd_max  = float(self._ad_rnd_var.get())
             except Exception:
-                interval = 60.0
-            try:
-                rnd_max = float(self._ad_rnd_var.get())
-            except Exception:
-                rnd_max = 10.0
+                interval, rnd_max = 60.0, 10.0
             sleep_t = interval + random.uniform(0, rnd_max)
-            self.log(f"📢 광고({idx}/{len(msgs)}) 전송 — 다음까지 {sleep_t:.0f}초")
+            self.log(f"📢 [광고{idx}/{len(regular_msgs)}] 전송 — 다음까지 {sleep_t:.0f}초")
             end_t = time.time() + sleep_t
             while time.time() < end_t and self._ad_running:
                 time.sleep(0.2)
+
         self.after(0, lambda: (
             self._ad_start_btn.configure(state="normal"),
             self._ad_stop_btn.configure(state="disabled", fg_color="#374151", hover_color="#374151"),
