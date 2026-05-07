@@ -1296,28 +1296,41 @@ class AppHeyJangsa(ctk.CTk):
 
     def _read_mp_bar(self, region, mp_max: int) -> int | None:
         """MP 바 픽셀 비율로 현재 MP 계산.
-        파란/밝은 픽셀이 끊기는 지점 기준으로 채워진 너비 측정."""
+        'MP: 40/88' 흰색 텍스트 오버레이를 제외하고 채워진 너비 측정."""
         if not region:
             return None
         try:
             x1, y1, x2, y2 = region
             img = ImageGrab.grab(bbox=(x1, y1, x2, y2), all_screens=True).convert("RGB")
             w, h = img.size
-            if w == 0:
+            if w < 10 or h < 4:
                 return None
             pixels = list(img.getdata())
-            # 열(x)별로 파란/밝은 픽셀이 있는지 확인 → 가장 오른쪽 채워진 x 찾기
+
+            # 상하 중간 50% 행만 스캔 (텍스트가 가운데 높이에 있어도 바 픽셀과 구분)
+            y0    = h // 4
+            y_end = h * 3 // 4
+            if y0 >= y_end:
+                y0, y_end = 0, h
+            ys = range(y0, y_end)
+
             filled_x = 0
             for x in range(w):
-                col_bright = False
-                for y in range(h):
+                non_white_sums = []
+                for y in ys:
                     r, g, b = pixels[y * w + x]
-                    # MP바: 파란 계열 또는 밝은 픽셀 (r<180, b>80 또는 전체 밝기>60)
-                    if (b > 80 and b >= r - 20) or (r + g + b) > 180:
-                        col_bright = True
-                        break
-                if col_bright:
+                    # 흰색 텍스트 픽셀 제외 (r,g,b 모두 185 이상이면 텍스트)
+                    if r > 185 and g > 185 and b > 185:
+                        continue
+                    non_white_sums.append(r + g + b)
+                if not non_white_sums:
+                    continue
+                # 비흰색 픽셀 평균 밝기 ≥ 200 → 바 채워진 열
+                # 채워진 바: 황금/파란 계열 합계 ~300-400
+                # 빈 배경: 어두운 합계 ~60-150
+                if sum(non_white_sums) / len(non_white_sums) >= 200:
                     filled_x = x + 1
+
             ratio = filled_x / w
             return max(0, round(ratio * mp_max))
         except Exception:
