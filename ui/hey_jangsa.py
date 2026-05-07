@@ -102,10 +102,6 @@ class AppHeyJangsa(ctk.CTk):
         self._sub_mp_bar_region  = None   # 서브 MP바 영역
         self._sub_mp_bar_max_var = ctk.StringVar(value="88")    # 서브 최대 MP
         self._mp_bar_enabled_var = ctk.BooleanVar(value=True)   # 바 감지 사용 여부
-        self._mp_announce_var      = ctk.BooleanVar(value=True)
-        self._mp_announce_tmpl     = ctk.StringVar(value="{n}방 가능합니다")
-        self._mp_announce_interval = ctk.StringVar(value="30")   # 반복 주기(초)
-        self._mp_announce_rnd      = ctk.StringVar(value="5")    # 랜덤 추가(초)
         # MP 3초 폴링 캐시 (백그라운드 스레드가 3초마다 갱신)
         self._cached_mp:  int | None = None
         self._cached_mp2: int | None = None
@@ -899,19 +895,6 @@ class AppHeyJangsa(ctk.CTk):
                      width=60, height=26, font=ctk.CTkFont(size=12)).pack(side="left", padx=(4, 4))
         ctk.CTkLabel(mp2, text="(초과 시 OCR 오류로 무시)",
                      font=ctk.CTkFont(size=11), text_color="#64748B").pack(side="left", padx=(2, 12))
-        ctk.CTkCheckBox(mp2, text="방 수 채팅 알림",
-                        variable=self._mp_announce_var,
-                        font=ctk.CTkFont(size=12), text_color="white").pack(side="left")
-
-        mp3 = ctk.CTkFrame(f7, fg_color="transparent"); mp3.pack(fill="x", pady=2)
-        ctk.CTkLabel(mp3, text="알림 형식:", font=ctk.CTkFont(size=12),
-                     text_color="white", width=80).pack(side="left")
-        ctk.CTkEntry(mp3, textvariable=self._mp_announce_tmpl,
-                     width=180, height=26, font=ctk.CTkFont(size=12)).pack(side="left", padx=(4, 4))
-        ctk.CTkLabel(mp3, text="({n}=방수)", font=ctk.CTkFont(size=11),
-                     text_color="#64748B").pack(side="left", padx=(0, 12))
-
-
         # MP 상태 표시 + 지금 읽기 버튼
         mp4 = ctk.CTkFrame(f7, fg_color="transparent"); mp4.pack(fill="x", pady=2)
         ctk.CTkButton(mp4, text="🔍 지금 읽기", width=96, height=26,
@@ -1461,82 +1444,6 @@ class AppHeyJangsa(ctk.CTk):
 
         self.log(f"💬 채팅: {text}")
 
-    def _announce_shots(self):
-        """광고 직전 MP 즉시 캡처 → 가능 방 수 채팅 알림."""
-        try:
-            per = max(1, int(self._mp_per_shot_var.get()))
-        except Exception:
-            per = 20
-        # 광고 시점에만 캡처 (거래 중에는 이 함수 자체가 호출 안 됨)
-        if self._mp_region:
-            val = self._read_mp()
-            if val is not None:
-                self._cached_mp = val
-        if self._dual_client_var.get() and self._sub_mp_region:
-            val2 = self._read_mp(region=self._sub_mp_region, bar_region=self._sub_mp_bar_region, bar_max_var=self._sub_mp_bar_max_var)
-            if val2 is not None:
-                self._cached_mp2 = val2
-        mp1 = self._cached_mp  if self._cached_mp  is not None else None
-        mp2 = self._cached_mp2 if (self._dual_client_var.get()
-                                    and self._cached_mp2 is not None) else None
-        if mp1 is None and mp2 is None:
-            self.log("⚠ MP 읽기 실패 — 방 수 알림 스킵")
-            return
-        n1 = mp1 // per if mp1 is not None else 0
-        n2 = mp2 // per if mp2 is not None else 0
-        real_n = n1 + n2
-        chat_n = min(real_n, self._ad_mp_cap)
-        # UI 라벨 — 실제 방 수 표시
-        if self._dual_client_var.get() and mp2 is not None:
-            lbl_text = f"MP: {mp1 or '?'}+{mp2}  →  총 {real_n}방 (메인{n1}+서브{n2}) / 채팅{chat_n}방"
-        else:
-            lbl_text = f"MP: {mp1}  →  {real_n}방 가능 (채팅표시 {chat_n}방)"
-        self.after(0, lambda t=lbl_text: self._mp_status_lbl.configure(text=t))
-        if real_n <= 0:
-            return
-        tmpl = self._mp_announce_tmpl.get()
-        msg  = tmpl.replace("{n}", str(chat_n))
-        self._send_chat_hj(msg)
-
-    def _announce_shots_loop(self):
-        """봇 실행 중 주기적으로 방 수 알림 전송.
-        WATCHING/DETECTED/MP_WAIT 상태에서 interval마다 전송,
-        거래 진행 중에는 대기했다가 재개."""
-        try:
-            interval = float(self._mp_announce_interval.get())
-        except Exception:
-            interval = 30.0
-        try:
-            rnd_max = float(self._mp_announce_rnd.get())
-        except Exception:
-            rnd_max = 5.0
-        interval = max(5.0, interval)
-
-        while self.running:
-            # 거래 진행 중이면 대기 (종료하지 않고 polling)
-            if self._trade_state not in ("WATCHING", "DETECTED", "MP_WAIT"):
-                time.sleep(0.5)
-                continue
-
-            # interval + 랜덤 대기
-            sleep_t = interval + random.uniform(0, rnd_max)
-            end_t   = time.time() + sleep_t
-            while time.time() < end_t:
-                if not self.running:
-                    return
-                time.sleep(0.2)
-
-            if not self.running:
-                return
-            if self._trade_state in ("WATCHING", "DETECTED", "MP_WAIT"):
-                # 3방 미만이면 엠탐중만 전송
-                n = self._get_n_shots_from_mp()
-                if self._mp_region and n >= 0 and n < 3:
-                    msg = self._mp_low_msg_var.get().strip() or "엠탐중"
-                    self.log(f"💤 MP {n}방 (3방 미만) — 엠탐중 전송")
-                    threading.Thread(target=lambda: self._send_chat_hj(msg), daemon=True).start()
-                else:
-                    self._announce_shots()
 
     def _mp_poll_loop(self):
         """백그라운드에서 MP를 캡처해 _cached_mp / _cached_mp2 갱신."""
@@ -1845,10 +1752,6 @@ class AppHeyJangsa(ctk.CTk):
             "hj_mp_per_shot":    self._mp_per_shot_var.get(),
             "hj_mp_max":         self._mp_max_var.get(),
             "hj_mp_scan_interval": self._mp_scan_interval_var.get(),
-            "hj_mp_announce":    self._mp_announce_var.get(),
-            "hj_mp_tmpl":        self._mp_announce_tmpl.get(),
-            "hj_mp_ann_interval":self._mp_announce_interval.get(),
-            "hj_mp_ann_rnd":     self._mp_announce_rnd.get(),
             "hj_thanks":         [v.get() for v in self._thanks_vars],
             "hj_thanks_en":      [v.get() for v in self._thanks_en],
             "hj_auto_light":     self._auto_light_var.get(),
@@ -1932,10 +1835,6 @@ class AppHeyJangsa(ctk.CTk):
             self._mp_per_shot_var.set(cfg.get("hj_mp_per_shot",  "20"))
             self._mp_max_var.set(cfg.get("hj_mp_max",            "200"))
             self._mp_scan_interval_var.set(cfg.get("hj_mp_scan_interval", "10"))
-            self._mp_announce_var.set(cfg.get("hj_mp_announce",  True))
-            self._mp_announce_tmpl.set(cfg.get("hj_mp_tmpl",     "{n}방 가능합니다"))
-            self._mp_announce_interval.set(cfg.get("hj_mp_ann_interval", "30"))
-            self._mp_announce_rnd.set(cfg.get("hj_mp_ann_rnd",   "5"))
             for i, v in enumerate(cfg.get("hj_thanks", [])):
                 if i < 3: self._thanks_vars[i].set(v)
             for i, v in enumerate(cfg.get("hj_thanks_en", [])):
@@ -2058,52 +1957,38 @@ class AppHeyJangsa(ctk.CTk):
     _AD_SAFE_STATES = {"IDLE", "WATCHING"}
 
     def _ad_loop(self):
-        """1·2·3번 광고 순환 + 4번 방수 알림 독립 타이머 (같은 스레드, 별도 주기)"""
+        """1~4번 광고 같은 주기로 순환. 4번에 {n} 있으면 캐시 MP로 방수 치환."""
         idx = 0
-        last_mp_ad = 0.0  # 4번 마지막 전송 시각
-
         while self._ad_running:
             if self._trade_state not in self._AD_SAFE_STATES:
                 self.log(f"거래 중({self._trade_state}) — 광고 전송 보류", tag="AD")
                 time.sleep(2.0)
                 continue
 
-            now = time.time()
-
-            # ── 4번 방수 알림 (독립 주기: MP 알림 주기 설정 사용) ──────────
-            mp4_tmpl = self._ad_msg_vars[3].get().strip()
-            if mp4_tmpl and "{n}" in mp4_tmpl:
-                try:
-                    mp4_interval = float(self._mp_announce_interval.get())
-                    mp4_rnd      = float(self._mp_announce_rnd.get())
-                except Exception:
-                    mp4_interval, mp4_rnd = 30.0, 5.0
-                mp4_interval = max(10.0, mp4_interval)
-                if now - last_mp_ad >= mp4_interval + random.uniform(0, mp4_rnd):
-                    try:
-                        per = max(1, int(self._mp_per_shot_var.get()))
-                    except Exception:
-                        per = 20
-                    mp1    = self._cached_mp  if self._cached_mp  is not None else 0
-                    mp2    = self._cached_mp2 if (self._dual_client_var.get()
-                                                   and self._cached_mp2 is not None) else 0
-                    real_n = (mp1 // per) + (mp2 // per)
-                    chat_n = min(real_n, self._ad_mp_cap)
-                    if real_n > 0:
-                        msg4 = mp4_tmpl.replace("{n}", str(chat_n))
-                        self.log(f"📢 [4번] MP={mp1}+{mp2} → {chat_n}방 알림", tag="AD")
-                        self._send_chat_hj(msg4)
-                    else:
-                        self.log("📢 [4번] 0방 — 방수 알림 건너뜀", tag="AD")
-                    last_mp_ad = now
-
-            # ── 1·2·3번 광고 순환 ──────────────────────────────────────────
-            regular_msgs = [v.get().strip() for v in self._ad_msg_vars[:3] if v.get().strip()]
-            if not regular_msgs:
+            msgs = [v.get().strip() for v in self._ad_msg_vars if v.get().strip()]
+            if not msgs:
                 time.sleep(1.0)
                 continue
-            msg = regular_msgs[idx % len(regular_msgs)]
+
+            msg = msgs[idx % len(msgs)]
             idx += 1
+
+            if "{n}" in msg:
+                try:
+                    per = max(1, int(self._mp_per_shot_var.get()))
+                except Exception:
+                    per = 20
+                mp1    = self._cached_mp  if self._cached_mp  is not None else 0
+                mp2    = self._cached_mp2 if (self._dual_client_var.get()
+                                               and self._cached_mp2 is not None) else 0
+                real_n = (mp1 // per) + (mp2 // per)
+                chat_n = min(real_n, self._ad_mp_cap)
+                self.log(f"📢 MP={mp1}+{mp2} → {chat_n}방", tag="AD")
+                if real_n <= 0:
+                    self.log("📢 0방 — 방수 메시지 건너뜀", tag="AD")
+                    continue
+                msg = msg.replace("{n}", str(chat_n))
+
             self._send_chat_hj(msg)
             try:
                 interval = float(self._ad_interval_var.get())
@@ -2111,7 +1996,7 @@ class AppHeyJangsa(ctk.CTk):
             except Exception:
                 interval, rnd_max = 60.0, 10.0
             sleep_t = interval + random.uniform(0, rnd_max)
-            self.log(f"📢 [광고{idx}/{len(regular_msgs)}] 전송 — 다음까지 {sleep_t:.0f}초")
+            self.log(f"📢 광고({idx}/{len(msgs)}) 전송 — 다음까지 {sleep_t:.0f}초")
             end_t = time.time() + sleep_t
             while time.time() < end_t and self._ad_running:
                 time.sleep(0.2)
@@ -2798,12 +2683,6 @@ class AppHeyJangsa(ctk.CTk):
                         if not recovered or not self.running:
                             self._set_state("WATCHING")
                             continue
-                        if self._mp_announce_var.get():
-                            self._spawn(self._announce_shots, name="announce")
-                            time.sleep(0.6)
-                    elif self._mp_announce_var.get():
-                        self._spawn(self._announce_shots, name="announce")
-                        time.sleep(0.6)
 
                 time.sleep(action_delay)
                 if self.running:
