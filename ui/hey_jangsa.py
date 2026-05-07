@@ -2492,9 +2492,6 @@ class AppHeyJangsa(ctk.CTk):
         threading.Thread(target=self._loop, daemon=True).start()
         if self._auto_light_var.get():
             threading.Thread(target=self._auto_light_loop, daemon=True, name="auto-light").start()
-        # MP 3초 폴링 (캐시 갱신)
-        if self._mp_region:
-            # mp-poll 루프 제거 — 광고 직전에만 캡처
         # 평상시 광고 자동 시작
         self._start_ad()
 
