@@ -2605,10 +2605,28 @@ class AppHeyJangsa(ctk.CTk):
                 self._set_state("DETECTED")
                 self.log("손님 감지!")
 
-                # MP는 광고용으로만 캡처 — 거래 진입은 MP 무관하게 항상 진행
-                if self._mp_announce_var.get():
-                    self._spawn(self._announce_shots, name="announce")
-                    time.sleep(0.6)
+                # MP 체크 → 0방이면 엠탐중 대기 (즉시 캡처)
+                if self._mp_region:
+                    val = self._read_mp()
+                    if val is not None:
+                        self._cached_mp = val
+                    if self._dual_client_var.get() and self._sub_mp_region:
+                        val2 = self._read_mp(region=self._sub_mp_region)
+                        if val2 is not None:
+                            self._cached_mp2 = val2
+                    n_avail = self._get_n_shots_from_mp()
+                    if n_avail < 3:
+                        self._set_state("MP_WAIT")
+                        recovered = self._wait_for_mp()
+                        if not recovered or not self.running:
+                            self._set_state("WATCHING")
+                            continue
+                        if self._mp_announce_var.get():
+                            self._spawn(self._announce_shots, name="announce")
+                            time.sleep(0.6)
+                    elif self._mp_announce_var.get():
+                        self._spawn(self._announce_shots, name="announce")
+                        time.sleep(0.6)
 
                 time.sleep(action_delay)
                 if self.running:
