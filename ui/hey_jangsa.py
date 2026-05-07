@@ -1296,7 +1296,7 @@ class AppHeyJangsa(ctk.CTk):
 
     def _read_mp_bar(self, region, mp_max: int) -> int | None:
         """MP 바 픽셀 비율로 현재 MP 계산.
-        슬라이딩 윈도우로 밝기 낙차가 가장 큰 경계점(fill→empty edge)을 검출."""
+        채움 색(밝은 파란 계열, b>150 and b>r+20)의 범위로 비율 산출."""
         if not region:
             return None
         try:
@@ -1313,48 +1313,38 @@ class AppHeyJangsa(ctk.CTk):
                 y0, y_end = 0, h
             ys = range(y0, y_end)
 
-            def col_avg(x):
-                sums = []
+            def col_has_fill(x) -> bool:
+                """열에 MP바 채움 색(밝은 파란 계열)이 있는지"""
                 for y in ys:
                     r, g, b = pixels[y * w + x]
-                    if r > 185 and g > 185 and b > 185:  # 흰색 텍스트 제외
-                        continue
-                    sums.append(r + g + b)
-                return sum(sums) / len(sums) if sums else 0
+                    if b > 150 and b > r + 20:
+                        return True
+                return False
 
-            # 밝기 프로파일 + 5열 스무딩
-            raw = [col_avg(x) for x in range(w)]
-            profile = []
-            for i in range(w):
-                vals = [raw[j] for j in range(i - 2, i + 3) if 0 <= j < w]
-                profile.append(sum(vals) / len(vals))
+            # 채움 구간: 첫 열 ~ 마지막 열 탐색
+            first_fill = -1
+            last_fill  = -1
+            for x in range(w):
+                if col_has_fill(x):
+                    if first_fill < 0:
+                        first_fill = x
+                    last_fill = x
 
-            # 좌(채워진 기준) vs 우(빈 기준) 비교
-            ref = max(3, w // 20)
-            left_avg  = sum(profile[:ref]) / ref
-            right_avg = sum(profile[-ref:]) / ref
+            if first_fill < 0:
+                self.log("MP바: 채움 색 없음 (MP≈0)", tag="MP")
+                return 0
 
-            # 좌우 차이가 없으면 꽉 찼거나 완전히 비었다고 판단 → max 반환
-            if left_avg - right_avg < 20:
-                return mp_max
+            # 바 시작(first_fill) 기준으로 오른쪽 마진은 대칭 가정
+            bar_start = first_fill
+            bar_end   = w - bar_start
+            bar_len   = bar_end - bar_start
+            fill_len  = last_fill - bar_start
 
-            # 슬라이딩 윈도우: 낙차가 가장 큰 x 지점 = fill→empty 경계
-            win = max(5, w // 15)
-            max_drop = 0
-            transition_x = w
-            for i in range(win, w - win):
-                left_w  = sum(profile[i - win:i]) / win
-                right_w = sum(profile[i:i + win]) / win
-                drop = left_w - right_w
-                if drop > max_drop:
-                    max_drop = drop
-                    transition_x = i
-
-            ratio = transition_x / w
-            val = max(0, round(ratio * mp_max))
+            ratio = min(1.0, fill_len / bar_len) if bar_len > 0 else 1.0
+            val   = max(0, round(ratio * mp_max))
             self.log(
-                f"MP바 L={left_avg:.0f} R={right_avg:.0f} "
-                f"edge={transition_x}/{w} drop={max_drop:.0f} ratio={ratio:.2f} → {val}",
+                f"MP바 fill={first_fill}~{last_fill}/{w} "
+                f"bar_len={bar_len} ratio={ratio:.2f} → {val}",
                 tag="MP"
             )
             return val
