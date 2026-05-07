@@ -2194,12 +2194,29 @@ class AppHeyJangsa(ctk.CTk):
         start = time.time()
         self.log(f"💰 금액 감지 대기 (최대 {timeout:.0f}초, 방당 {price_per}아데나)...")
 
-        while self.running and time.time() - start < timeout:
-            # ── 매 루프마다 거래창 존재 먼저 확인 (커서 이동 전) ────
+        # 5초마다 거래창 존재 독립 감시 스레드
+        trade_abort = threading.Event()
+        def _win_watcher():
+            while not trade_abort.is_set():
+                trade_abort.wait(timeout=5.0)
+                if trade_abort.is_set():
+                    break
+                if not self.running:
+                    break
+                if self._trade_win_region and not self._detect_trade_window():
+                    self.log("⚠ [5초 체크] 거래창 없음 → 거래 초기화")
+                    self.after(0, lambda: self._status_lbl.configure(
+                        text="⚠ 거래창 없음", text_color="#EF4444"))
+                    trade_abort.set()
+        threading.Thread(target=_win_watcher, daemon=True, name="win-watcher").start()
+
+        while self.running and not trade_abort.is_set() and time.time() - start < timeout:
+            # 매 루프마다 거래창 확인 (영역 없을 때도 abort 이벤트로 처리됨)
             if not self._trade_win_open():
                 self.log("⚠ 거래창 닫힘 감지 → 손님이 취소함")
                 self.after(0, lambda: self._status_lbl.configure(
                     text="⚠ 거래창 닫힘", text_color="#EF4444"))
+                trade_abort.set()
                 return False
 
             amount = self._ocr_money_amount()
@@ -2256,6 +2273,7 @@ class AppHeyJangsa(ctk.CTk):
                         self.log("⚠ OK 위치 미설정 — Y 키만 입력")
                         time.sleep(1.0)
                         self._press_key_y()
+                    trade_abort.set()
                     self._add_sale_record(amount, n_bought)
                     return True
                 else:
@@ -2264,6 +2282,15 @@ class AppHeyJangsa(ctk.CTk):
                     time.sleep(0.5)
                     continue
             time.sleep(0.5)
+
+        trade_abort.set()
+
+        if trade_abort.is_set() and not self.running:
+            return False
+
+        # 거래창 감시 스레드가 abort 시킨 경우
+        if trade_abort.is_set():
+            return False
 
         # 타임아웃 — 60초 초과 → Cancel 후 초기화
         self.log(f"⏱ {timeout:.0f}초 초과 — 거래 초기화")
