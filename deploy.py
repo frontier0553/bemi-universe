@@ -115,7 +115,7 @@ def main():
     subprocess.run("pyinstaller launcher.spec --clean --noconfirm",
                    shell=True, cwd=BASE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-print("[4/4] GitHub Release 생성 및 업로드...")
+    print("[4/4] GitHub Release 생성 및 업로드...")
     try:
         release = api_post("/releases", token, {
             "tag_name": f"v{new_ver}", "name": f"v{new_ver}",
