@@ -68,13 +68,30 @@ class UpdateWindow(tk.Tk):
         super().__init__()
         local = _local_version()
         self.title(f"배미유니버스 업데이트  v{local}")
-        self.geometry("360x120")
+        self.geometry("360x155")
         self.resizable(False, False)
         self.configure(bg="#1e1e2e")
 
+        # MAC 주소 상시 표시
+        mac_frame = tk.Frame(self, bg="#1e1e2e")
+        mac_frame.pack(pady=(12, 0))
+        tk.Label(mac_frame, text="내 MAC:", bg="#1e1e2e", fg="#94A3B8",
+                 font=("맑은 고딕", 9)).pack(side="left", padx=(0, 4))
+        self._mac_var = tk.StringVar(value=_get_mac())
+        mac_entry = tk.Entry(mac_frame, textvariable=self._mac_var, width=18,
+                             bg="#1e1e2e", fg="#FACC15", relief="flat",
+                             font=("Consolas", 10), state="readonly",
+                             readonlybackground="#1e1e2e")
+        mac_entry.pack(side="left")
+        tk.Button(mac_frame, text="복사", bg="#2d2d42", fg="white", relief="flat",
+                  font=("맑은 고딕", 8), cursor="hand2", padx=6,
+                  command=lambda: (self.clipboard_clear(),
+                                   self.clipboard_append(self._mac_var.get()))
+                  ).pack(side="left", padx=(4, 0))
+
         self._lbl = tk.Label(self, text="버전 확인 중...", bg="#1e1e2e",
                              fg="white", font=("맑은 고딕", 11))
-        self._lbl.pack(pady=(18, 6))
+        self._lbl.pack(pady=(8, 4))
 
         self._bar = ttk.Progressbar(self, length=300, mode="indeterminate")
         self._bar.pack()
