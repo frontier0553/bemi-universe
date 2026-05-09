@@ -8,3 +8,5 @@ config.json
 config_hj.json
 config_hunt.json
 bemi_icon.ico
+github_token.txt
+client_token.txt

@@ -115,7 +115,7 @@ def main():
     subprocess.run("pyinstaller launcher.spec --clean --noconfirm",
                    shell=True, cwd=BASE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    print("[4/4] GitHub Release 생성 및 업로드...")
+print("[4/4] GitHub Release 생성 및 업로드...")
     try:
         release = api_post("/releases", token, {
             "tag_name": f"v{new_ver}", "name": f"v{new_ver}",
@@ -134,6 +134,7 @@ def main():
         if os.path.exists(launcher_path):
             r2 = upload_asset_named(rid, token, launcher_path, "launcher.exe")
             print(f"  런처 EXE: {r2.get('state')}")
+
 
     except Exception as e:
         print(f"[ERROR] GitHub 오류: {e}"); return

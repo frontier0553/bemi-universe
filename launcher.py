@@ -2,7 +2,7 @@
 """
 배미유니버스 런처 — 자동 업데이트 + 실행
 """
-import os, json, shutil, threading, subprocess, tempfile, zipfile, ssl
+import os, sys, json, shutil, threading, subprocess, tempfile, zipfile, ssl
 import urllib.request
 import tkinter as tk
 from tkinter import ttk
@@ -19,13 +19,91 @@ MAIN_EXE         = "bemi-universe.exe"
 VERSION_FILE     = "version.txt"
 BASE_DIR         = r"C:\bemiuniverse"
 WHITELIST_ENABLED = False   # False 로 바꾸면 화이트리스트 검사 비활성화
+_USERNAME_FILE    = os.path.join(BASE_DIR, "username.txt")
 os.makedirs(BASE_DIR, exist_ok=True)
+
+def _resource(name):
+    """PyInstaller 번들 or 소스 실행 모두 대응하는 파일 경로."""
+    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, name)
+
+def _load_client_token():
+    p = _resource("client_token.txt")
+    if os.path.exists(p):
+        return open(p, encoding="utf-8").read().strip()
+    return ""
+
+_CLIENT_TOKEN = _load_client_token()
 
 
 def _get_mac():
     import uuid
     mac = uuid.getnode()
     return ":".join(f"{(mac >> (8*i)) & 0xff:02X}" for i in reversed(range(6)))
+
+def _load_username():
+    if os.path.exists(_USERNAME_FILE):
+        return open(_USERNAME_FILE, encoding="utf-8").read().strip()
+    return ""
+
+def _save_username(name):
+    with open(_USERNAME_FILE, "w", encoding="utf-8") as f:
+        f.write(name.strip())
+
+def _get_ip():
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "unknown"
+
+def _register_client(username):
+    if not _CLIENT_TOKEN:
+        return
+    import base64, datetime
+    mac = _get_mac()
+    data = {
+        "username": username,
+        "mac": mac,
+        "ip": _get_ip(),
+        "computer": os.environ.get("COMPUTERNAME", "unknown"),
+        "last_seen": datetime.datetime.now().isoformat(timespec="seconds"),
+    }
+    path = f"clients/{mac.replace(':', '')}.json"
+    api_url = f"https://api.github.com/repos/{REPO}/contents/{path}"
+    headers = {
+        "Authorization": f"token {_CLIENT_TOKEN}",
+        "Accept": "application/vnd.github+json",
+        "Content-Type": "application/json",
+    }
+    sha = None
+    try:
+        req = urllib.request.Request(api_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=8, context=_ssl) as r:
+            sha = json.loads(r.read()).get("sha")
+    except Exception:
+        pass
+    body = {
+        "message": f"client: {username}",
+        "content": base64.b64encode(
+            json.dumps(data, ensure_ascii=False, indent=2).encode()
+        ).decode(),
+    }
+    if sha:
+        body["sha"] = sha
+    try:
+        req = urllib.request.Request(
+            api_url, data=json.dumps(body).encode(), headers=headers, method="PUT"
+        )
+        with urllib.request.urlopen(req, timeout=10, context=_ssl) as r:
+            pass
+    except Exception:
+        pass
+
 
 def _check_whitelist():
     try:
@@ -68,13 +146,27 @@ class UpdateWindow(tk.Tk):
         super().__init__()
         local = _local_version()
         self.title(f"배미유니버스 업데이트  v{local}")
-        self.geometry("360x120")
+        self.geometry("360x175")
         self.resizable(False, False)
         self.configure(bg="#1e1e2e")
 
+        # 사용자명 입력
+        uframe = tk.Frame(self, bg="#1e1e2e")
+        uframe.pack(pady=(14, 0))
+        tk.Label(uframe, text="사용자명", bg="#1e1e2e", fg="#94A3B8",
+                 font=("맑은 고딕", 10)).pack(side="left", padx=(0, 6))
+        self._name_var = tk.StringVar(value=_load_username())
+        self._name_entry = tk.Entry(uframe, textvariable=self._name_var, width=20,
+                                    bg="#2d2d42", fg="white", insertbackground="white",
+                                    relief="flat", font=("맑은 고딕", 10), bd=4)
+        self._name_entry.pack(side="left")
+
+        sep = tk.Frame(self, bg="#2d2d42", height=1)
+        sep.pack(fill="x", padx=20, pady=(10, 0))
+
         self._lbl = tk.Label(self, text="버전 확인 중...", bg="#1e1e2e",
                              fg="white", font=("맑은 고딕", 11))
-        self._lbl.pack(pady=(18, 6))
+        self._lbl.pack(pady=(10, 6))
 
         self._bar = ttk.Progressbar(self, length=300, mode="indeterminate")
         self._bar.pack()
@@ -91,6 +183,9 @@ class UpdateWindow(tk.Tk):
         self._sub.configure(text=sub)
 
     def _run(self):
+        username = self._name_var.get().strip() or "익명"
+        _save_username(username)
+
         if WHITELIST_ENABLED:
             allowed, mac = _check_whitelist()
         else:
@@ -102,6 +197,9 @@ class UpdateWindow(tk.Tk):
             self._bar.stop()
             self._bar.configure(mode="determinate", value=0)
             return
+
+        # 클라이언트 등록 (백그라운드 — 실패해도 무시)
+        threading.Thread(target=lambda: _register_client(username), daemon=True).start()
 
         exe = os.path.join(BASE_DIR, MAIN_EXE)
         first_install = not os.path.exists(exe)
