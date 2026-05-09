@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
-import os
+import os, uuid
 import customtkinter as ctk
 
 from core.icon import _apply_icon, _build_icon_image
+
+def _get_mac():
+    mac = uuid.getnode()
+    return ":".join(f"{(mac >> (8*i)) & 0xff:02X}" for i in reversed(range(6)))
 
 def _load_version():
     p = os.path.join(r"C:\bemiuniverse", "version.txt")
@@ -89,6 +93,21 @@ class ModeSelectWindow(ctk.CTk):
         ctk.CTkLabel(top, text=f"모드를 선택하세요  |  v{_load_version()}", font=ctk.CTkFont(size=13),
                      text_color="#64748B").pack(pady=(6, 0))
         ctk.CTkFrame(f, height=1, fg_color="#1E293B").pack(fill="x", padx=40, pady=22)
+
+        # MAC 주소 표시
+        mac_frame = ctk.CTkFrame(f, fg_color="transparent")
+        mac_frame.pack(pady=(0, 6))
+        mac = _get_mac()
+        ctk.CTkLabel(mac_frame, text="내 MAC 주소:", font=ctk.CTkFont(size=11),
+                     text_color="#475569").pack(side="left", padx=(0, 6))
+        mac_lbl = ctk.CTkLabel(mac_frame, text=mac, font=ctk.CTkFont(family="Consolas", size=11),
+                               text_color="#FACC15")
+        mac_lbl.pack(side="left")
+        ctk.CTkButton(mac_frame, text="복사", width=44, height=22,
+                      fg_color="#1E293B", hover_color="#334155",
+                      font=ctk.CTkFont(size=10),
+                      command=lambda: (self.clipboard_clear(), self.clipboard_append(mac))
+                      ).pack(side="left", padx=(8, 0))
 
         row = ctk.CTkFrame(f, fg_color="transparent"); row.pack(padx=24)
         self._card(row, "#0F1E38", "#1E3A5F", "⚡", "요정버프",
